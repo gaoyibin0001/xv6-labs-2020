@@ -76,7 +76,8 @@ find(char *path, char *pattern)
         // printf("%s\n", buf);
         find(buf, pattern);
       }
-      else if(st.type == T_FILE && strcmp(pattern, fmtname(buf))==0){
+      // else if(st.type == T_FILE && strcmp(pattern, fmtname(buf))==0){
+      else if(st.type == T_FILE && strcmp(pattern, de.name)==0){
         printf("%s\n", buf);
       }
     //   filename = fmtname(buf);     
