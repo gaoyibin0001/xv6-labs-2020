@@ -133,6 +133,34 @@ static uint64 (*syscalls[])(void) = {
 
 };
 
+#define MAX_STRING_SIZE 10
+
+char call_arr[][MAX_STRING_SIZE] =
+{ "fork",
+  "exit",
+  "wait",
+  "pip",
+  "read",
+  "kill",
+  "exec",
+  "fstat",
+  "chdir",
+  "dup",
+  "gerpid",
+  "sbrk",
+  "sleep",
+  "uptime",
+  "open",
+  "write",
+  "mknod",
+  "unlink",
+  "link",
+  "mkdir",
+  "close",
+  "trace"
+};
+
+
 void
 syscall(void)
 {
@@ -142,6 +170,10 @@ syscall(void)
   num = p->trapframe->a7;
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
     p->trapframe->a0 = syscalls[num]();
+    if(p->trace_number & num) {
+      printf("%d: syscall %s -> %d\n",
+            p->pid, call_arr[num], p->trapframe->a0);
+    }
   } else {
     printf("%d %s: unknown sys call %d\n",
             p->pid, p->name, num);
