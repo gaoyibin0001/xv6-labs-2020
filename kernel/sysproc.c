@@ -6,6 +6,7 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "sysinfo.h"
 
 uint64
 sys_exit(void)
@@ -104,6 +105,16 @@ sys_trace(void)
   if(argint(0, &trace_number) < 0)
     return -1;
   myproc()->trace_number = trace_number;
-  return
+  return 0;
 }
 
+uint64
+sys_sysinfo(struct sysinfo *)
+{
+  int freemem = freemem();
+
+  if(argint(0, &trace_number) < 0)
+    return -1;
+  myproc()->trace_number = trace_number;
+  return 0;
+}

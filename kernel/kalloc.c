@@ -80,3 +80,14 @@ kalloc(void)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
 }
+
+int freemem(void)
+{
+  int total = 0;
+  r = kmem.freelist;
+  while(r)
+    r = r->next;
+    total += PGSIZE
+  return total
+}
+

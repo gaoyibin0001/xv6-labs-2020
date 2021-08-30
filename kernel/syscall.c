@@ -6,6 +6,7 @@
 #include "proc.h"
 #include "syscall.h"
 #include "defs.h"
+#include "sysinfo.h"
 
 // Fetch the uint64 at addr from the current process.
 int
@@ -105,6 +106,7 @@ extern uint64 sys_wait(void);
 extern uint64 sys_write(void);
 extern uint64 sys_uptime(void);
 extern uint64 sys_trace(void);
+extern uint64 sys_sysinfo(struct sysinfo *);
 
 
 static uint64 (*syscalls[])(void) = {
@@ -130,7 +132,7 @@ static uint64 (*syscalls[])(void) = {
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
 [SYS_trace]   sys_trace,
-
+[SYS_sysinfo] sys_sysinfo
 };
 
 #define MAX_STRING_SIZE 10
@@ -160,6 +162,7 @@ char call_arr[][MAX_STRING_SIZE] =
   "trace"
 };
 
+#define needTrace(a, b) ((a) >> (b) & 0x00000001)
 
 void
 syscall(void)
@@ -170,9 +173,11 @@ syscall(void)
   num = p->trapframe->a7;
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
     p->trapframe->a0 = syscalls[num]();
-    if(p->trace_number & num) {
+    // if(p->trace_number & num) {
+    // if((num==SYS_trace) | (needTrace(p->trace_number, num))) {
+    if(needTrace(p->trace_number, num)) {
       printf("%d: syscall %s -> %d\n",
-            p->pid, call_arr[num], p->trapframe->a0);
+            p->pid, call_arr[num-1], p->trapframe->a0);
     }
   } else {
     printf("%d %s: unknown sys call %d\n",
