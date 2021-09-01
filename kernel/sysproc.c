@@ -109,12 +109,23 @@ sys_trace(void)
 }
 
 uint64
-sys_sysinfo(struct sysinfo *)
+sys_sysinfo(void)
 {
-  int freemem = freemem();
+  uint64 st; // user pointer to struct stat
 
-  if(argint(0, &trace_number) < 0)
+  if(argaddr(0, &st) < 0)
     return -1;
-  myproc()->trace_number = trace_number;
+
+  struct proc *p = myproc();
+  // struct sysinfo *info_user;
+
+  int freem = freemem();
+  int nproc = procnumber();
+  struct sysinfo info;
+  info.freemem = freem;
+  info.nproc = nproc;
+
+  if(copyout(p->pagetable, st, (char *)&info, sizeof(info)) < 0)
+    return -1;
   return 0;
 }

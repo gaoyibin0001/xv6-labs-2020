@@ -84,10 +84,17 @@ kalloc(void)
 int freemem(void)
 {
   int total = 0;
+  struct run *r;
+  // acquire(&kmem.lock);
   r = kmem.freelist;
-  while(r)
+
+  while(r){
     r = r->next;
-    total += PGSIZE
-  return total
+    // printf("total mem %d\n", total);
+    total += PGSIZE;
+  }
+  // release(&kmem.lock);
+
+  return total;
 }
 

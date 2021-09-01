@@ -106,7 +106,7 @@ extern uint64 sys_wait(void);
 extern uint64 sys_write(void);
 extern uint64 sys_uptime(void);
 extern uint64 sys_trace(void);
-extern uint64 sys_sysinfo(struct sysinfo *);
+extern uint64 sys_sysinfo(void);
 
 
 static uint64 (*syscalls[])(void) = {
@@ -159,7 +159,8 @@ char call_arr[][MAX_STRING_SIZE] =
   "link",
   "mkdir",
   "close",
-  "trace"
+  "trace",
+  "sysinfo"
 };
 
 #define needTrace(a, b) ((a) >> (b) & 0x00000001)
