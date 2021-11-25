@@ -18,6 +18,7 @@ exec(char *path, char **argv)
   struct elfhdr elf;
   struct inode *ip;
   struct proghdr ph;
+  // pagetable_t pagetable = 0, oldpagetable, kernel_pt=0, old_kernel_pt;
   pagetable_t pagetable = 0, oldpagetable;
   struct proc *p = myproc();
 
@@ -37,6 +38,9 @@ exec(char *path, char **argv)
 
   if((pagetable = proc_pagetable(p)) == 0)
     goto bad;
+
+  // if((kernel_pt = kernel_pt_init(p)) == 0)
+  //   goto bad;
 
   // Load program into memory.
   for(i=0, off=elf.phoff; i<elf.phnum; i++, off+=sizeof(ph)){
@@ -63,6 +67,7 @@ exec(char *path, char **argv)
 
   p = myproc();
   uint64 oldsz = p->sz;
+  
 
   // Allocate two pages at the next page boundary.
   // Use the second as the user stack.
@@ -72,6 +77,15 @@ exec(char *path, char **argv)
     goto bad;
   sz = sz1;
   uvmclear(pagetable, sz-2*PGSIZE);
+
+  // printf("exec copy pagetable started");
+
+  // // vmprint(p->kernel_pt, 0);
+  // if (uvmpagecopy(pagetable, kernel_pt, 0, sz) < 0) {
+  //   printf("exec copy pagetable failed");
+  //   goto bad;
+  // }
+  // printf("exec copy pagetable success");
   sp = sz;
   stackbase = sp - PGSIZE;
 
@@ -111,16 +125,21 @@ exec(char *path, char **argv)
   // Commit to the user image.
   oldpagetable = p->pagetable;
   p->pagetable = pagetable;
+  // old_kernel_pt = p->kernel_pt;
+  // p->kernel_pt = kernel_pt;
   p->sz = sz;
   p->trapframe->epc = elf.entry;  // initial program counter = main
   p->trapframe->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
-
+  // free_kernel_pt(old_kernel_pt, p->kstack);
+  if(p->pid==1) vmprint(p->pagetable, 0);
   return argc; // this ends up in a0, the first argument to main(argc, argv)
 
  bad:
   if(pagetable)
     proc_freepagetable(pagetable, sz);
+  // if(kernel_pt)
+  //   free_kernel_pt(kernel_pt, p->kstack);
   if(ip){
     iunlockput(ip);
     end_op();

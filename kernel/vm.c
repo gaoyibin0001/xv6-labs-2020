@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -46,6 +48,40 @@ kvminit()
   // the highest virtual address in the kernel.
   kvmmap(TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
 }
+
+pagetable_t
+kernel_pt_init(struct proc *p)
+{
+  pagetable_t pagetable;
+  // An empty page table.
+  pagetable = uvmcreate();
+  if(pagetable == 0)
+    return 0;
+
+  // uart registers
+  kernel_pt_map(pagetable, UART0, UART0, PGSIZE, PTE_R | PTE_W);
+
+  // virtio mmio disk interface
+  kernel_pt_map(pagetable, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
+
+  // CLINT
+  kernel_pt_map(pagetable, CLINT, CLINT, 0x10000, PTE_R | PTE_W);
+
+  // PLIC
+  kernel_pt_map(pagetable, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
+
+  // map kernel text executable and read-only.
+  kernel_pt_map(pagetable, KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
+
+  // map kernel data and the physical RAM we'll make use of.
+  kernel_pt_map(pagetable, (uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W);
+
+  // map the trampoline for trap entry/exit to
+  // the highest virtual address in the kernel.
+  kernel_pt_map(pagetable, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+  return pagetable;
+}
+
 
 // Switch h/w page table register to the kernel's page table,
 // and enable paging.
@@ -121,6 +157,13 @@ kvmmap(uint64 va, uint64 pa, uint64 sz, int perm)
     panic("kvmmap");
 }
 
+void
+kernel_pt_map(pagetable_t pagetable, uint64 va, uint64 pa, uint64 sz, int perm)
+{
+  if(mappages(pagetable, va, sz, pa, perm) != 0)
+    panic("kvmmap");
+}
+
 // translate a kernel virtual address to
 // a physical address. only needed for
 // addresses on the stack.
@@ -131,8 +174,8 @@ kvmpa(uint64 va)
   uint64 off = va % PGSIZE;
   pte_t *pte;
   uint64 pa;
-  
-  pte = walk(kernel_pagetable, va, 0);
+  struct proc *p = myproc();
+  pte = walk(p->kernel_pt, va, 0);
   if(pte == 0)
     panic("kvmpa");
   if((*pte & PTE_V) == 0)
@@ -154,7 +197,7 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
   a = PGROUNDDOWN(va);
   last = PGROUNDDOWN(va + size - 1);
   for(;;){
-    if((pte = walk(pagetable, a, 1)) == 0)
+    if((pte = walk(pagetable, a, 1)) == 0) 
       return -1;
     if(*pte & PTE_V)
       panic("remap");
@@ -272,7 +315,7 @@ uvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 // Recursively free page-table pages.
 // All leaf mappings must already have been removed.
 void
-freewalk(pagetable_t pagetable)
+freewalk(pagetable_t pagetable, int checkout_leaf)
 {
   // there are 2^9 = 512 PTEs in a page table.
   for(int i = 0; i < 512; i++){
@@ -280,9 +323,9 @@ freewalk(pagetable_t pagetable)
     if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
       // this PTE points to a lower-level page table.
       uint64 child = PTE2PA(pte);
-      freewalk((pagetable_t)child);
+      freewalk((pagetable_t)child, checkout_leaf);
       pagetable[i] = 0;
-    } else if(pte & PTE_V){
+    } else if((checkout_leaf != 0) && (pte & PTE_V)){
       panic("freewalk: leaf");
     }
   }
@@ -296,8 +339,26 @@ uvmfree(pagetable_t pagetable, uint64 sz)
 {
   if(sz > 0)
     uvmunmap(pagetable, 0, PGROUNDUP(sz)/PGSIZE, 1);
-  freewalk(pagetable);
+  freewalk(pagetable, 1);
 }
+
+
+void
+free_kernel_pt(pagetable_t pagetable, uint64 kstack)
+{
+  // uvmunmap(pagetable, UART0, 1, 0);
+  // uvmunmap(pagetable, VIRTIO0, 1, 0);
+  // uvmunmap(pagetable, CLINT, PGROUNDUP(0x10000)/PGSIZE, 0);
+  // uvmunmap(pagetable, PLIC, PGROUNDUP(0x400000)/PGSIZE, 0);
+  // uvmunmap(pagetable, KERNBASE, PGROUNDUP((uint64)etext-KERNBASE)/PGSIZE, 0);
+  // uvmunmap(pagetable, (uint64)etext, PGROUNDUP(PHYSTOP-(uint64)etext)/PGSIZE, 0);
+  // uvmunmap(pagetable, TRAMPOLINE, 1, 0);
+
+  uvmunmap(pagetable, kstack, 1, 1);
+  freewalk(pagetable, 0);
+}
+
+
 
 // Given a parent process's page table, copy
 // its memory into a child's page table.
@@ -332,6 +393,39 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 
  err:
   uvmunmap(new, 0, i / PGSIZE, 1);
+  return -1;
+}
+
+int
+uvmpagecopy(pagetable_t old, pagetable_t new, uint64 st_addr, uint64 sz)
+{ 
+  printf("enter uvmpagecopy!!!\n");
+  pte_t *pte;
+  uint64 pa, i;
+  uint flags;
+  if (sz > PLIC){
+    return -1;
+  }
+
+  for(i = st_addr; i < sz; i += PGSIZE){
+      printf("uvmpagecopy: %d\n", i);
+    if((pte = walk(old, i, 0)) == 0)
+      panic("uvmpagecopy: pte should exist\n");
+    if((*pte & PTE_V) == 0)
+      panic("uvmpagecopy: page not present");
+    // *pte &= ~PTE_U;
+    pa = PTE2PA(*pte);
+    flags = PTE_FLAGS(*pte);
+    flags &= ~PTE_U;
+    if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
+      goto err;                     
+    }
+  }
+  return 0;
+
+ err:
+  printf("uvmpagecopy error");
+  uvmunmap(new, 0, i / PGSIZE, 0);
   return -1;
 }
 
@@ -396,8 +490,31 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
     srcva = va0 + PGSIZE;
   }
   return 0;
+  // return copyin_new(pagetable, dst, srcva, len);
 }
 
+
+// int
+// copyin_new(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
+// {
+//   uint64 n, va0, pa0;
+
+//   while(len > 0){
+//     va0 = PGROUNDDOWN(srcva);
+//     pa0 = walkaddr(pagetable, va0);
+//     if(pa0 == 0)
+//       return -1;
+//     n = PGSIZE - (srcva - va0);
+//     if(n > len)
+//       n = len;
+//     memmove(dst, (void *)(pa0 + (srcva - va0)), n);
+
+//     len -= n;
+//     dst += n;
+//     srcva = va0 + PGSIZE;
+//   }
+//   return 0;
+// }
 // Copy a null-terminated string from user to kernel.
 // Copy bytes to dst from virtual address srcva in a given page table,
 // until a '\0', or max.
@@ -438,5 +555,64 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return 0;
   } else {
     return -1;
+  }
+}
+
+// int
+// copyinstr_new(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
+// {
+//   uint64 n, va0, pa0;
+//   int got_null = 0;
+
+//   while(got_null == 0 && max > 0){
+//     va0 = PGROUNDDOWN(srcva);
+//     pa0 = walkaddr(pagetable, va0);
+//     if(pa0 == 0)
+//       return -1;
+//     n = PGSIZE - (srcva - va0);
+//     if(n > max)
+//       n = max;
+
+//     char *p = (char *) (pa0 + (srcva - va0));
+//     while(n > 0){
+//       if(*p == '\0'){
+//         *dst = '\0';
+//         got_null = 1;
+//         break;
+//       } else {
+//         *dst = *p;
+//       }
+//       --n;
+//       --max;
+//       p++;
+//       dst++;
+//     }
+
+//     srcva = va0 + PGSIZE;
+//   }
+//   if(got_null){
+//     return 0;
+//   } else {
+//     return -1;
+//   }
+// }
+
+void vmprint(pagetable_t pagetable, int level) 
+{
+  // there are 2^9 = 512 PTEs in a page table
+  // printf("page table %p\n", pagetable);
+  if(level==0) printf("page table %p\n", pagetable);
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    if(pte & PTE_V){
+      // this PTE points to a lower-level page table.
+      uint64 child = PTE2PA(pte);
+      if (level==0) printf("..%d: pte %p pa %p\n", i, pte, child);
+      else if (level==1) printf(".. ..%d: pte %p pa %p\n", i, pte, child);
+      else if (level==2) printf(".. .. ..%d: pte %p pa %p\n", i, pte, child);
+      if(level < 2)
+        vmprint((pagetable_t)child, level+1);
+      
+    } 
   }
 }
