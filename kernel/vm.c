@@ -210,6 +210,28 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
   return 0;
 }
 
+
+int
+mappages_kernel(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
+{
+  uint64 a, last;
+  pte_t *pte;
+
+  a = PGROUNDDOWN(va);
+  last = PGROUNDDOWN(va + size - 1);
+  for(;;){
+    if((pte = walk(pagetable, a, 1)) == 0) 
+      return -1;
+    *pte = PA2PTE(pa) | perm | PTE_V;
+    if(a == last)
+      break;
+    a += PGSIZE;
+    pa += PGSIZE;
+  }
+  return 0;
+}
+
+
 // Remove npages of mappings starting from va. va must be
 // page-aligned. The mappings must exist.
 // Optionally free the physical memory.
@@ -399,34 +421,42 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 int
 uvmpagecopy(pagetable_t old, pagetable_t new, uint64 st_addr, uint64 sz)
 { 
-  printf("enter uvmpagecopy!!!\n");
-  pte_t *pte;
-  uint64 pa, i;
-  uint flags;
+  // printf("enter uvmpagecopy!!!\n");
+  pte_t *pte, *pte_kernel;
+  uint64 i;
+  // uint flags;
   if (sz > PLIC){
     return -1;
   }
 
   for(i = st_addr; i < sz; i += PGSIZE){
-      printf("uvmpagecopy: %d\n", i);
+      // printf("uvmpagecopy: %d\n", i);
     if((pte = walk(old, i, 0)) == 0)
       panic("uvmpagecopy: pte should exist\n");
     if((*pte & PTE_V) == 0)
       panic("uvmpagecopy: page not present");
     // *pte &= ~PTE_U;
-    pa = PTE2PA(*pte);
-    flags = PTE_FLAGS(*pte);
-    flags &= ~PTE_U;
-    if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
-      goto err;                     
-    }
+    // pa = PTE2PA(*pte);
+    // flags = PTE_FLAGS(*pte);
+    // flags &= ~PTE_U;
+    // if(mappages_kernel(new, i, PGSIZE, (uint64)pa, flags) != 0){
+    //   goto err;                     
+    // }
+    if ((pte_kernel = walk(new, i, 1)) == 0) 
+        panic("copyin_new: walk failed");
+    // } else {
+    //   goto err;
+    // }
+    *pte_kernel = (*pte) & ~PTE_U;
+
   }
+ 
   return 0;
 
- err:
-  printf("uvmpagecopy error");
-  uvmunmap(new, 0, i / PGSIZE, 0);
-  return -1;
+//  err:
+//   printf("uvmpagecopy error");
+//   uvmunmap(new, 0, i / PGSIZE, 0);
+//   return -1;
 }
 
 // mark a PTE invalid for user access.
@@ -473,24 +503,24 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 int
 copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 {
-  uint64 n, va0, pa0;
+  // uint64 n, va0, pa0;
 
-  while(len > 0){
-    va0 = PGROUNDDOWN(srcva);
-    pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
-      return -1;
-    n = PGSIZE - (srcva - va0);
-    if(n > len)
-      n = len;
-    memmove(dst, (void *)(pa0 + (srcva - va0)), n);
+  // while(len > 0){
+  //   va0 = PGROUNDDOWN(srcva);
+  //   pa0 = walkaddr(pagetable, va0);
+  //   if(pa0 == 0)
+  //     return -1;
+  //   n = PGSIZE - (srcva - va0);
+  //   if(n > len)
+  //     n = len;
+  //   memmove(dst, (void *)(pa0 + (srcva - va0)), n);
 
-    len -= n;
-    dst += n;
-    srcva = va0 + PGSIZE;
-  }
-  return 0;
-  // return copyin_new(pagetable, dst, srcva, len);
+  //   len -= n;
+  //   dst += n;
+  //   srcva = va0 + PGSIZE;
+  // }
+  // return 0;
+  return copyin_new(pagetable, dst, srcva, len);
 }
 
 
@@ -556,6 +586,7 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+  // return copyinstr_new(pagetable, dst, srcva, max);
 }
 
 // int

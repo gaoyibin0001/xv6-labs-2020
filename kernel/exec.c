@@ -15,10 +15,14 @@ exec(char *path, char **argv)
   char *s, *last;
   int i, off;
   uint64 argc, sz = 0, sp, ustack[MAXARG+1], stackbase;
+  // uint64 argc, sz = 0, sp, ustack[MAXARG+1], stackbase, old_kernel_stack;
+
   struct elfhdr elf;
   struct inode *ip;
   struct proghdr ph;
   // pagetable_t pagetable = 0, oldpagetable, kernel_pt=0, old_kernel_pt;
+  // pagetable_t pagetable = 0, oldpagetable, kernel_pt=0;
+
   pagetable_t pagetable = 0, oldpagetable;
   struct proc *p = myproc();
 
@@ -41,6 +45,20 @@ exec(char *path, char **argv)
 
   // if((kernel_pt = kernel_pt_init(p)) == 0)
   //   goto bad;
+
+  // char *pa = kalloc();
+  // if(pa == 0){
+  //   release(&p->lock);
+  //   return 0;
+  // }
+  // uint64 va = KSTACK((int) (0));
+  // kernel_pt_map(p->kernel_pt, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+  // p->kstack = va;
+
+  // Set up new context to start executing at forkret,
+  // which returns to user space.
+  // memset(&p->context, 0, sizeof(p->context));
+  // p->context.sp = p->kstack + PGSIZE;
 
   // Load program into memory.
   for(i=0, off=elf.phoff; i<elf.phnum; i++, off+=sizeof(ph)){
@@ -78,14 +96,9 @@ exec(char *path, char **argv)
   sz = sz1;
   uvmclear(pagetable, sz-2*PGSIZE);
 
-  // printf("exec copy pagetable started");
+  printf("exec copy pagetable started");
 
-  // // vmprint(p->kernel_pt, 0);
-  // if (uvmpagecopy(pagetable, kernel_pt, 0, sz) < 0) {
-  //   printf("exec copy pagetable failed");
-  //   goto bad;
-  // }
-  // printf("exec copy pagetable success");
+  
   sp = sz;
   stackbase = sp - PGSIZE;
 
@@ -111,6 +124,14 @@ exec(char *path, char **argv)
   if(copyout(pagetable, sp, (char *)ustack, (argc+1)*sizeof(uint64)) < 0)
     goto bad;
 
+
+  // vmprint(p->kernel_pt, 0);
+  if (uvmpagecopy(pagetable, p->kernel_pt, 0, sz) < 0) {
+    printf("exec copy pagetable failed");
+    goto bad;
+  }
+  printf("exec copy pagetable success");
+
   // arguments to user main(argc, argv)
   // argc is returned via the system call return
   // value, which goes in a0.
@@ -126,12 +147,13 @@ exec(char *path, char **argv)
   oldpagetable = p->pagetable;
   p->pagetable = pagetable;
   // old_kernel_pt = p->kernel_pt;
+  // old_kernel_stack = p->kstack;
   // p->kernel_pt = kernel_pt;
   p->sz = sz;
   p->trapframe->epc = elf.entry;  // initial program counter = main
   p->trapframe->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
-  // free_kernel_pt(old_kernel_pt, p->kstack);
+  // free_kernel_pt(old_kernel_pt, old_kernel_stack);
   if(p->pid==1) vmprint(p->pagetable, 0);
   return argc; // this ends up in a0, the first argument to main(argc, argv)
 

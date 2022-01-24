@@ -25,11 +25,11 @@ extern char trampoline[]; // trampoline.S
 void
 procinit(void)
 {
-  // struct proc *p;
+  struct proc *p;
   
-  // initlock(&pid_lock, "nextpid");
-  // for(p = proc; p < &proc[NPROC]; p++) {
-  //     initlock(&p->lock, "proc");
+  initlock(&pid_lock, "nextpid");
+  for(p = proc; p < &proc[NPROC]; p++) {
+      initlock(&p->lock, "proc");
 
   //     // Allocate a page for the process's kernel stack.
   //     // Map it high in memory, followed by an invalid
@@ -41,7 +41,8 @@ procinit(void)
   //     kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
   //     p->kstack = va;
   // }
-  kvminithart();
+  // kvminithart();
+}
 }
 
 // Must be called with interrupts disabled,
@@ -127,7 +128,7 @@ found:
     release(&p->lock);
     return 0;
   }
-  uint64 va = KSTACK((int) (0));
+  uint64 va = KSTACK((int) (p - proc)); // todo need to know if 0 is ok 
   kernel_pt_map(p->kernel_pt, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
   p->kstack = va;
 
@@ -176,7 +177,8 @@ freeproc(struct proc *p)
   if(p->kernel_pt)
     free_kernel_pt(p->kernel_pt, p->kstack);
   p->pagetable = 0;
-  
+  p->kernel_pt = 0;
+  p->kstack = 0;
   p->sz = 0;
   p->pid = 0;
   p->parent = 0;
@@ -254,11 +256,12 @@ userinit(void)
   // allocate one user page and copy init's instructions
   // and data into it.
   uvminit(p->pagetable, initcode, sizeof(initcode));
-  // uvmpagecopy(p->pagetable, p->kernel_pt, 0, sizeof(initcode));
   // vmprint(p->pagetable, 0);
   // vmprint(p->kernel_pt, 0);
   // printf("11111");
   p->sz = PGSIZE;
+  uvmpagecopy(p->pagetable, p->kernel_pt, 0, p->sz);
+
 
   // prepare for the very first "return" from kernel to user.
   p->trapframe->epc = 0;      // user program counter
@@ -285,9 +288,19 @@ growproc(int n)
   if(n > 0){
     if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
       return -1;
+    }else{
+      // printf("sbrk copy pagetable started");  // todo bug. not consider decrease memory
+      if(uvmpagecopy(p->pagetable, p->kernel_pt, sz-n, sz) < 0){
+          printf("sys sbrk copy pagetable failed");
+        return -1;
+      }
     }
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
+    if (n >= PGSIZE) {
+        uvmunmap(p->kernel_pt, PGROUNDDOWN(sz), n/PGSIZE, 0);
+    }
+    
   }
   p->sz = sz;
   return 0;
@@ -314,13 +327,14 @@ fork(void)
     return -1;
   }
   // printf("fork copy pagetable started");
-  // if(uvmpagecopy(np->pagetable, np->kernel_pt, 0, np->sz) < 0){
-  //   printf("fork copy pagetable failed");
+  if(uvmpagecopy(np->pagetable, np->kernel_pt, 0, p->sz) < 0){
+    printf("fork copy pagetable failed");
 
-  //   freeproc(np);
-  //   release(&np->lock);
-  //   return -1;
-  // }
+    freeproc(np);
+    release(&np->lock);
+    return -1;
+  }
+  // printf("fork copy pagetable sucess\n");
   
   np->sz = p->sz;
 
@@ -529,6 +543,7 @@ scheduler(void)
         // Process is done running for now.
         // It should have changed its p->state before coming back.
         c->proc = 0;
+        // kvminithart();
 
         found = 1;
       }
@@ -536,7 +551,7 @@ scheduler(void)
     }
 #if !defined (LAB_FS)
     if(found == 0) {
-      kvminithart();
+      kvminithart();  // todo if delete
       intr_on();
       asm volatile("wfi");
     }

@@ -51,11 +51,11 @@ sys_sbrk(void)
     return -1;
   // struct proc* np = myproc();
 
-//   printf("sbrk copy pagetable started");
-//   if(uvmpagecopy(np->pagetable, np->kernel_pt, addr, np->sz) < 0){
-//       printf("sys sbrk copy pagetable failed");
-//     return -1;
-//   }
+  // printf("sbrk copy pagetable started");  // todo bug. not consider decrease memory
+  // if(uvmpagecopy(np->pagetable, np->kernel_pt, addr, np->sz) < 0){
+  //     printf("sys sbrk copy pagetable failed");
+  //   return -1;
+  // }
   return addr;
 }
 
