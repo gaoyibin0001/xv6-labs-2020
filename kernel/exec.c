@@ -96,7 +96,7 @@ exec(char *path, char **argv)
   sz = sz1;
   uvmclear(pagetable, sz-2*PGSIZE);
 
-  printf("exec copy pagetable started");
+  // printf("exec copy pagetable started");
 
   
   sp = sz;
@@ -130,7 +130,7 @@ exec(char *path, char **argv)
     printf("exec copy pagetable failed");
     goto bad;
   }
-  printf("exec copy pagetable success");
+  // printf("exec copy pagetable success");
 
   // arguments to user main(argc, argv)
   // argc is returned via the system call return
