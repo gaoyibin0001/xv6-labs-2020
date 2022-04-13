@@ -121,6 +121,7 @@ panic(char *s)
   printf("panic: ");
   printf(s);
   printf("\n");
+  backtrace();
   panicked = 1; // freeze uart output from other CPUs
   for(;;)
     ;
@@ -132,3 +133,71 @@ printfinit(void)
   initlock(&pr.lock, "pr");
   pr.locking = 1;
 }
+
+// void
+// backtrace(void)
+// {
+//   uint64 bk_page, *last_fp, last_bk_page;
+//   *last_fp = r_fp();
+//   bk_page = PGROUNDDOWN(*last_fp);
+//   printf("%x\n", *last_fp-8);
+//   while(1) {
+//     *last_fp = (void*) (last_fp - 16); // get value of saved fp(ie. bp in 6.004)
+//     last_bk_page = PGROUNDDOWN(*last_fp);
+//     if (last_bk_page != bk_page) break;
+//     printf("%x\n", *last_fp-8);
+//   }
+// }
+
+// void
+// backtrace(void)
+// {
+//   uint64 bk_page, last_bk_page, last_fp;
+//   uint64 *fp_address;
+//   last_fp = r_fp();
+//   bk_page = PGROUNDDOWN(last_fp);
+//   printf("%p\n", last_fp-8);
+//   while(1) {
+//     fp_address = (uint64*) (last_fp - 16); // get value of saved fp(ie. bp in 6.004)
+//     last_fp = *fp_address;
+//     last_bk_page = PGROUNDDOWN(last_fp);
+//     if (last_bk_page != bk_page) break;
+//     printf("%p\n", last_fp-8);
+//   }
+// }
+
+void
+backtrace(void)
+{
+  uint64 bk_page, last_bk_page, last_fp;
+  uint64 *fp_address, *re_address;
+  last_fp = r_fp();
+  bk_page = PGROUNDDOWN(last_fp);
+  re_address = (uint64*) (last_fp - 8);
+  printf("%p\n", (*re_address)-4); // re_address default next instruction, instrction size is variant
+  while(1) {
+    fp_address = (uint64*) (last_fp - 16); // get value of saved fp(ie. bp in 6.004)
+    last_fp = *fp_address;
+    last_bk_page = PGROUNDDOWN(last_fp);
+    if (last_bk_page != bk_page) break;
+    re_address = (uint64*) (last_fp - 8);
+    printf("%p\n", (*re_address)-4);
+  }
+}
+
+
+// void
+// backtrace(void)
+// {
+//   uint64 bk_page, last_bk_page, *last_fp;
+//   uint64 *fp_address;
+//   *last_fp = r_fp();
+//   bk_page = PGROUNDDOWN(*last_fp);
+//   printf("%p\n", *last_fp-8);
+//   while(1) {
+//     last_fp = (uint64*) (*last_fp - 16); // get value of saved fp(ie. bp in 6.004)
+//     last_bk_page = PGROUNDDOWN(*last_fp);
+//     if (last_bk_page != bk_page) break;
+//     printf("%p\n", *last_fp-8);
+//   }
+// }

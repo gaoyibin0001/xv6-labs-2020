@@ -1,0 +1,7 @@
+a2
+no call. compiler compute the result as 12
+1536
+do not know
+i= 0x27c64600  57616 to 0x011E
+the value of address previous 3. print implemented as last line in asm code, print value contain in previous.
+
