@@ -96,3 +96,39 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64 
+sys_sigalarm(void)
+{
+  int ticks;
+  int handler;
+
+  if(argint(0, &ticks) < 0)
+    return -1;
+
+  if(argint(1, &handler) < 0)
+    return -1;
+
+  struct proc *p = myproc();
+
+  p->trapframe_ticks_handler = (struct trapframe *)kalloc();
+
+  p->ticks=ticks;
+  p->handler=(uint64)handler;
+  p->passed_ticks=0;
+  p->allow_handler=1;
+  return 0;
+}
+
+uint64 
+sys_sigreturn(void){
+  struct proc *p = myproc();
+  // p->trapframe = p->trapframe_ticks_handler;
+  // memmove(p->trapframe, p->trapframe_ticks_handler, sizeof(p->trapframe)); 
+  if (p->ticks>0) {
+     *(p->trapframe) = *(p->trapframe_ticks_handler);
+     p->allow_handler = 1;
+  }
+  
+  return 0;
+}

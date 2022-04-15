@@ -37,6 +37,8 @@ void
 usertrap(void)
 {
   int which_dev = 0;
+  uint64 sepc = r_sepc();
+  // uint64 sstatus = r_sstatus();
 
   if((r_sstatus() & SSTATUS_SPP) != 0)
     panic("usertrap: not from user mode");
@@ -48,6 +50,8 @@ usertrap(void)
   struct proc *p = myproc();
   
   // save user program counter.
+  // ), again because there
+  // might be a process switch in usertrap that could cause sepc to be overwritten
   p->trapframe->epc = r_sepc();
   
   if(r_scause() == 8){
@@ -77,9 +81,23 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
-    yield();
+  if(which_dev == 2){
+    if (p->ticks > 0 && p->allow_handler==1 && ++p->passed_ticks >= p->ticks){
+      // p->ticks=0;
+      p->passed_ticks=0;
+      p->trapframe->epc = p->handler;  
+      // save for sigreturn use
+      // memmove(p->trapframe_ticks_handler, p->trapframe, sizeof(p->trapframe)); 
+      *(p->trapframe_ticks_handler) = *(p->trapframe);
 
+      // p->trapframe_ticks_handler = p->trapframe;
+      p->trapframe_ticks_handler->epc = sepc;
+
+      p->allow_handler = 0;
+    }
+    yield();
+  }
+  
   usertrapret();
 }
 
@@ -150,8 +168,21 @@ kerneltrap()
   }
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
+  if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING){
+    // if (p->ticks > 0 && p->passed_ticks++ >= p->ticks){
+    //   p->ticks=0;
+    //   p->passed_ticks=0;
+    //   p->trapframe->epc = p->handler;  // todo checkout count of ticks, and if ticks>0.
+    // }
+    // struct proc *p = myproc();
+    // if (p->ticks > 0 && ++p->passed_ticks >= p->ticks){
+    //   // p->ticks=0;
+    //   p->passed_ticks=0;
+    //   p->trapframe->epc = p->handler;  // todo checkout count of ticks, and if ticks>0.
+    // }
     yield();
+  }
+    
 
   // the yield() may have caused some traps to occur,
   // so restore trap registers for use by kernelvec.S's sepc instruction.
