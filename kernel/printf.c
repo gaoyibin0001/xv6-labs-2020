@@ -174,14 +174,14 @@ backtrace(void)
   last_fp = r_fp();
   bk_page = PGROUNDDOWN(last_fp);
   re_address = (uint64*) (last_fp - 8);
-  printf("%p\n", (*re_address)-4); // re_address default next instruction, instrction size is variant
+  printf("%p\n", (*re_address)); // re_address default next instruction, instrction size is variant
   while(1) {
     fp_address = (uint64*) (last_fp - 16); // get value of saved fp(ie. bp in 6.004)
     last_fp = *fp_address;
     last_bk_page = PGROUNDDOWN(last_fp);
     if (last_bk_page != bk_page) break;
     re_address = (uint64*) (last_fp - 8);
-    printf("%p\n", (*re_address)-4);
+    printf("%p\n", (*re_address));
   }
 }
 
