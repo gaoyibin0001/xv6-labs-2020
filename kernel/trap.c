@@ -37,6 +37,10 @@ void
 usertrap(void)
 {
   int which_dev = 0;
+  int stvel = r_stval();
+  int scause = r_scause();
+  int va;
+  char *mem;
 
   if((r_sstatus() & SSTATUS_SPP) != 0)
     panic("usertrap: not from user mode");
@@ -68,9 +72,28 @@ usertrap(void)
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
-    printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
-    printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
-    p->killed = 1;
+    va = PGROUNDDOWN(stvel);
+    if (va < p->sz && (scause == 13 || scause == 15)) {
+      mem = kalloc();
+      if(mem == 0){
+        p->killed = 1;
+      } else {
+        memset(mem, 0, PGSIZE);
+        // mappages(p->pagetable, va, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U);
+        if(mappages(p->pagetable, va, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
+          kfree(mem);
+          p->killed = 1;
+    }
+      }
+    
+
+    } else {
+      p->killed = 1;
+    }
+    
+    // printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+    // printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+    
   }
 
   if(p->killed)

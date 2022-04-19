@@ -5,7 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
-
+#include "spinlock.h"
+#include "proc.h"
 /*
  * the kernel's page table.
  */
@@ -175,15 +176,23 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 {
   uint64 a;
   pte_t *pte;
+  // struct proc *p = myproc();
 
   if((va % PGSIZE) != 0)
     panic("uvmunmap: not aligned");
-
+  
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
     if((pte = walk(pagetable, a, 0)) == 0)
-      panic("uvmunmap: walk");
-    if((*pte & PTE_V) == 0)
-      panic("uvmunmap: not mapped");
+    {
+      // panic("uvmunmap: walk");
+      // printf("uvmunmap: walk: pid=%d, address=%x\n", p->pid, a);
+      continue;
+    }
+    if((*pte & PTE_V) == 0) {
+      // panic("uvmunmap: not mapped");
+      // printf("uvmunmap: not mapped: pid=%d\n", p->pid);
+      continue;
+    }
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
     if(do_free){
@@ -258,9 +267,12 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 uint64
 uvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 {
-  if(newsz >= oldsz)
-    return oldsz;
+  // printf("uvmdealloc oldsz=%x, newsz=%x\n", oldsz, newsz);
 
+  if(newsz >= oldsz) {
+    // printf("uvmdealloc newsz >= oldsz oldsz=%x, newsz=%x\n", oldsz, newsz);
+    return oldsz;
+  }
   if(PGROUNDUP(newsz) < PGROUNDUP(oldsz)){
     int npages = (PGROUNDUP(oldsz) - PGROUNDUP(newsz)) / PGSIZE;
     uvmunmap(pagetable, PGROUNDUP(newsz), npages, 1);
@@ -283,7 +295,9 @@ freewalk(pagetable_t pagetable)
       freewalk((pagetable_t)child);
       pagetable[i] = 0;
     } else if(pte & PTE_V){
+      printf("free walk:index=%d, address=%x\n",i, pte);
       panic("freewalk: leaf");
+      // continue;
     }
   }
   kfree((void*)pagetable);
@@ -293,7 +307,8 @@ freewalk(pagetable_t pagetable)
 // then free page-table pages.
 void
 uvmfree(pagetable_t pagetable, uint64 sz)
-{
+{ 
+  // printf("uvmfree %x\n", sz);
   if(sz > 0)
     uvmunmap(pagetable, 0, PGROUNDUP(sz)/PGSIZE, 1);
   freewalk(pagetable);
@@ -315,9 +330,11 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
-      panic("uvmcopy: pte should exist");
+      // panic("uvmcopy: pte should exist");
+      continue;
     if((*pte & PTE_V) == 0)
-      panic("uvmcopy: page not present");
+      // panic("uvmcopy: page not present");
+      continue;
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
     if((mem = kalloc()) == 0)

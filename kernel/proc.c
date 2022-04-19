@@ -247,6 +247,7 @@ growproc(int n)
       return -1;
     }
   } else if(n < 0){
+    // printf("growproc negative n=%x, sz=%x\n", n, sz+n);
     sz = uvmdealloc(p->pagetable, sz, sz + n);
   }
   p->sz = sz;

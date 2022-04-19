@@ -42,12 +42,13 @@ sparse_memory_unmap(char *s)
   char *i, *prev_end, *new_end;
 
   prev_end = sbrk(REGION_SZ);
+  // printf("init size %x\n", prev_end);
   if (prev_end == (char*)0xffffffffffffffffL) {
     printf("sbrk() failed\n");
     exit(1);
   }
   new_end = prev_end + REGION_SZ;
-
+  // printf("new_end size %x\n", new_end);
   for (i = prev_end + PGSIZE; i < new_end; i += PGSIZE * PGSIZE)
     *(char **)i = i;
 
