@@ -73,7 +73,12 @@ usertrap(void)
     // ok
   } else {
     va = PGROUNDDOWN(stvel);
-    if (va < p->sz && (scause == 13 || scause == 15)) {
+    // int sp = r_sp();
+    int sp = p->trapframe->sp;
+    sp -= PGSIZE;
+    sp = PGROUNDDOWN(sp);
+    // printf("sp=%x, va=%x\n", sp, va);
+    if (va < p->sz && (scause == 13 || scause == 15) && sp != va) {
       mem = kalloc();
       if(mem == 0){
         p->killed = 1;

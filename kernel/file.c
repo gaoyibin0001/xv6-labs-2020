@@ -163,6 +163,7 @@ filewrite(struct file *f, uint64 addr, int n)
       ilock(f->ip);
       if ((r = writei(f->ip, 1, addr + i, f->off, n1)) > 0)
         f->off += r;
+      // printf("filewrite writei r=%d\n", r);
       iunlock(f->ip);
       end_op();
 
@@ -172,6 +173,7 @@ filewrite(struct file *f, uint64 addr, int n)
         panic("short filewrite");
       i += r;
     }
+    // printf("filewrite: i=%d, n=%d\n", i, n);
     ret = (i == n ? n : -1);
   } else {
     panic("filewrite");
