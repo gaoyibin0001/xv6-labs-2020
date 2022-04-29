@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -188,11 +190,58 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
       panic("uvmunmap: not a leaf");
     if(do_free){
       uint64 pa = PTE2PA(*pte);
-      kfree((void*)pa);
+      fl_fefcount_minus((uint64) pa);
+      // kfree((void*)pa);
     }
     *pte = 0;
   }
 }
+
+uint64
+walkpa_forcow(pagetable_t pagetable, uint64 va)
+{
+  pte_t *pte;
+  uint64 pa;
+  char *mem;
+  uint flags;
+  struct proc *p = myproc();
+  if(va >= MAXVA)
+    return 0;
+
+  pte = walk(pagetable, va, 0);
+  if(pte == 0)
+    return 0;
+  if((*pte & PTE_V) == 0)
+    return 0;
+  if((*pte & PTE_U) == 0)
+    return 0;
+  pa = PTE2PA(*pte);
+  if ((*pte & PTE_COW) != 0) {
+    mem = kalloc();
+    if(mem == 0){
+        return 0;
+    } else {
+      // memset(mem, 0, PGSIZE);
+      pa = PTE2PA(*pte);
+      flags = (PTE_FLAGS(*pte) | PTE_W) & ~PTE_COW;
+      memmove(mem, (char*)pa, PGSIZE);
+
+      uvmunmap(p->pagetable, va, 1, 1);
+      
+      // minus pte reference number
+      // mappages(p->pagetable, va, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U);
+      if(mappages(p->pagetable, va, PGSIZE, (uint64)mem, flags) != 0){
+        kfree(mem);
+        return 0;
+      }
+       return (uint64) mem;
+    }
+  }
+
+
+  return pa;
+}
+
 
 // create an empty user page table.
 // returns 0 if out of memory.
@@ -364,7 +413,7 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
-    pa0 = walkaddr(pagetable, va0);
+    pa0 = walkpa_forcow(pagetable, va0);
     if(pa0 == 0)
       return -1;
     n = PGSIZE - (dstva - va0);

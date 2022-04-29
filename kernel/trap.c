@@ -86,23 +86,24 @@ usertrap(void)
       //     p->killed = 1;
       // }
 
-      if((pte = walk(p->pagetable, va, 0)) != 0 && (*pte & PTE_COW != 0)) {
+      if((pte = walk(p->pagetable, va, 0)) != 0 && ((*pte & PTE_COW) != 0)) {
         mem = kalloc();
         if(mem == 0){
           p->killed = 1;
         } else {
           // memset(mem, 0, PGSIZE);
           pa = PTE2PA(*pte);
-          flags = PTE_FLAGS(*pte) | PTE_W;
+          flags = (PTE_FLAGS(*pte) | PTE_W) & ~PTE_COW;
           memmove(mem, (char*)pa, PGSIZE);
+
+          uvmunmap(p->pagetable, va, 1, 1);
+          
           // minus pte reference number
           // mappages(p->pagetable, va, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U);
           if(mappages(p->pagetable, va, PGSIZE, (uint64)mem, flags) != 0){
             kfree(mem);
             p->killed = 1;
-          } else {
-            fl_fefcount_minus((uint64) pa);
-          }
+          } 
         }
       }
     
@@ -110,9 +111,9 @@ usertrap(void)
     } else {
       p->killed = 1;
     }
-    printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
-    printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
-    p->killed = 1;
+    // printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+    // printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+    // p->killed = 1;
   }
 
   if(p->killed)
@@ -122,7 +123,7 @@ usertrap(void)
   if(which_dev == 2)
     yield();
 
-  usertrapret();
+  usertrapret(); 
 }
 
 //
