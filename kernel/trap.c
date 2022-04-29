@@ -37,9 +37,14 @@ void
 usertrap(void)
 {
   int which_dev = 0;
+  int stvel = r_stval();
   int scause = r_scause();
-  char *mem;
   int va;
+  char *mem;
+  pte_t *pte;
+  uint64 pa;
+  uint flags;
+
   if((r_sstatus() & SSTATUS_SPP) != 0)
     panic("usertrap: not from user mode");
 
@@ -71,22 +76,34 @@ usertrap(void)
     // ok
   } else {
     va = PGROUNDDOWN(stvel);
-    // int sp = r_sp();
-    int sp = p->trapframe->sp;
-    sp -= PGSIZE;
-    sp = PGROUNDDOWN(sp);
-    // printf("sp=%x, va=%x\n", sp, va);
-    if (va < p->sz && (scause == 13 || scause == 15) && sp != va) {
-      mem = kalloc();
-      if(mem == 0){
-        p->killed = 1;
-      } else {
-        memset(mem, 0, PGSIZE);
-        // mappages(p->pagetable, va, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U);
-        if(mappages(p->pagetable, va, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
-          kfree(mem);
+    // va is valid, page fault, cow flag on va. readonly fault, only for store fault
+    if (va < p->sz && (scause == 15)) {
+      // if((pte = walk(p->pagetable, va, 0)) == 0) {
+      //     p->killed = 1;
+      //     panic("usertrap: pte should exist");
+      // }
+      // if (*pte & PTE_COW == 0) {
+      //     p->killed = 1;
+      // }
+
+      if((pte = walk(p->pagetable, va, 0)) != 0 && (*pte & PTE_COW != 0)) {
+        mem = kalloc();
+        if(mem == 0){
           p->killed = 1;
-    }
+        } else {
+          // memset(mem, 0, PGSIZE);
+          pa = PTE2PA(*pte);
+          flags = PTE_FLAGS(*pte) | PTE_W;
+          memmove(mem, (char*)pa, PGSIZE);
+          // minus pte reference number
+          // mappages(p->pagetable, va, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U);
+          if(mappages(p->pagetable, va, PGSIZE, (uint64)mem, flags) != 0){
+            kfree(mem);
+            p->killed = 1;
+          } else {
+            fl_fefcount_minus((uint64) pa);
+          }
+        }
       }
     
 

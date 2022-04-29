@@ -63,6 +63,8 @@ void            ramdiskrw(struct buf*);
 void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
+void            fl_fefcount_minus(uint64);
+void            fl_fefcount_add(uint64);
 
 // log.c
 void            initlog(int, struct superblock*);
