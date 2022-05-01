@@ -1,0 +1,2 @@
+function insert:34,35 code line is critical section.which should be atomic.
+if both thread update e->next simulate, one e  data struct will be lost
