@@ -8,7 +8,7 @@
 #define NBUCKET 5
 #define NKEYS 100000
 
-pthread_mutex_t lock;            // declare a lock
+pthread_mutex_t lock[NBUCKET];            // declare a lock
 
 struct entry {
   int key;
@@ -55,9 +55,9 @@ void put(int key, int value)
     e->value = value;
   } else {
     // the new is new.
-    pthread_mutex_lock(&lock);       // acquire lock
+    pthread_mutex_lock(&lock[i]);       // acquire lock
     insert(key, value, &table[i], table[i]);
-    pthread_mutex_unlock(&lock);     // release lock4
+    pthread_mutex_unlock(&lock[i]);     // release lock4
 
   }
 }
@@ -125,8 +125,9 @@ main(int argc, char *argv[])
   //
   // first the puts
   //
-
-  pthread_mutex_init(&lock, NULL); // initialize the lock
+  for(int i = 0; i < nthread; i++) {
+    pthread_mutex_init(&lock[i], NULL); // initialize the lock
+  }
 
   t0 = now();
   for(int i = 0; i < nthread; i++) {
