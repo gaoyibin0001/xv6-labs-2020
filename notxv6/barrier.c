@@ -31,6 +31,29 @@ barrier()
   // then increment bstate.round.
   //
   
+
+  pthread_mutex_lock(&bstate.barrier_mutex);
+  bstate.nthread += 1;
+    if (bstate.nthread < nthread) {
+ 
+        // let's wait on condition variable cond1
+        // bstate.nthread += 1;
+        // printf("Waiting on condition variable cond1\n");
+        pthread_cond_wait(&bstate.barrier_cond, &bstate.barrier_mutex);
+    }
+    else {
+ 
+        // Let's signal condition variable cond1
+        // printf("Signaling condition variable cond1\n");
+        pthread_cond_broadcast(&bstate.barrier_cond);
+        bstate.round += 1;
+        bstate.nthread = 0;
+    }
+ 
+    // release lock
+    pthread_mutex_unlock(&bstate.barrier_mutex);
+ 
+  
 }
 
 static void *
