@@ -114,49 +114,121 @@ kfree(void *pa)
 int
 steal_mem_from_other_cpu(struct fl_mem_lock *kmem){
   struct fl_mem_lock *c_kmem;
-  int length = 0;
+  int length;
   int steal_length;
   struct run *c_run, *steal_run_list;
+  // printf("current alloc cpu%d\n", kmem-fl_kmem_locks);
   for (int cpu_id=0; cpu_id < NCPU; cpu_id++) {
     c_kmem = &fl_kmem_locks[cpu_id];
+    length = 0;
     if (c_kmem == kmem)
       continue;
     
-    if (c_kmem->freelist) {
-      acquire(&c_kmem->lock);
+    if (c_kmem < kmem) {
+      // printf("lock1111: %d\n", c_kmem-fl_kmem_locks);
+       acquire(&c_kmem->lock);
+      //  printf("lock2222: lockid: %d\n", kmem-fl_kmem_locks);
+       acquire(&kmem->lock);
+    } else {
+      // printf("lock3333: lockid: %d\n", kmem-fl_kmem_locks);
       acquire(&kmem->lock);
+      // printf("lock4444 lockid: %d\n", c_kmem-fl_kmem_locks);
+      acquire(&c_kmem->lock);
+    }
+    
+    if (c_kmem->freelist) {
+      // todo deadlock. resolve by define order of lock
       c_run = c_kmem->freelist;
       while (c_run) {
         length++;
         c_run = c_run->next;
       }
-      if (length == 1) {
-        steal_length = 1;
+
+      // if (length <= 10) {
+      //   printf("should panic!!!\n");
+      //   release(&kmem->lock);
+      //   release(&c_kmem->lock);
+      //   continue;
+      // }
+
+      // printf("before cut length: %d, cpuid: %d\n", length, cpu_id);
+      if (length <= 100) {
+        steal_length = length;
       } else {
         steal_length = length/2;
       }
-      if (steal_length <= 0) {
-        printf("should panic!!!\n");
-        continue;
-      }
+      
         
       c_run = c_kmem->freelist;
-      for (int i=0; i<steal_length; i++) {
+      for (int i=0; i<(length-steal_length) && c_run->next; i++) {
          c_run = c_run->next;
       }
-      steal_run_list = c_kmem->freelist;
-      c_kmem->freelist = c_run->next;
-      // c_run->next = (void*) 0;
+      // steal_run_list = c_kmem->freelist;
+      // c_kmem->freelist = c_run->next;
+      if (length == steal_length) {
+        steal_run_list = c_kmem->freelist;
+        c_kmem->freelist = (void*) 0;
+      } else {
+        steal_run_list = c_run->next;
+        c_run->next = (void*) 0;
+      }
+     
+      // steal_run_list = c_run;
+      // c_run = (void*) 0;
+
+      length = 0;
+      c_run = c_kmem->freelist;
+      while (c_run) {
+        length++;
+        c_run = c_run->next;
+      }
+      // printf("after cut length: %d\n", length);
       // release(&c_kmem->lock);
       // todo 1. possible lock error
       // acquire(&kmem->lock);
-      c_run->next = kmem->freelist;
+      // c_run->next = kmem->freelist;
       // steal_run_list->next = kmem->freelist;
+      
+      // c_run->next = kmem->freelist
+      c_run = kmem->freelist;
       kmem->freelist = steal_run_list;
-      release(&kmem->lock);
+      // c_run = kmem->freelist;
+      while(steal_run_list->next) {
+        steal_run_list = steal_run_list->next;
+      }
+      steal_run_list->next = c_run; 
+      
+      // kmem->freelist = c_run->next;
+
+      if (c_kmem < kmem) {
+        // printf("lock5555\n");
+       release(&kmem->lock);
+      //  printf("lock6666\n");
       release(&c_kmem->lock);
-      // printf("fdfd");
+    } else {
+      // printf("lock7777\n");
+      release(&c_kmem->lock);
+      // printf("lock8888\n");
+      release(&kmem->lock);
+      
+    }
+      
+      // printf("fdfd\n");
       return 0;
+    } else {
+      if (c_kmem < kmem) {
+        // printf("lock5555\n");
+       release(&kmem->lock);
+      //  printf("lock6666\n");
+      release(&c_kmem->lock);
+    } else {
+      // printf("lock7777\n");
+      release(&c_kmem->lock);
+      // printf("lock8888\n");
+      release(&kmem->lock);
+      
+    }
+
     }
   }
   // printf("545");
@@ -177,7 +249,9 @@ kalloc_with_lock(struct fl_mem_lock *kmem)
     kmem->freelist = r->next;
   release(&kmem->lock);
 
+  // acquire(&kmem->lock);
   if (!r) {
+    
     if (steal_mem_from_other_cpu(kmem) == 0){
         acquire(&kmem->lock);
         r = kmem->freelist;
@@ -185,7 +259,9 @@ kalloc_with_lock(struct fl_mem_lock *kmem)
           kmem->freelist = r->next;
         release(&kmem->lock);
     }
+    
   }
+  // release(&kmem->lock);
 
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
