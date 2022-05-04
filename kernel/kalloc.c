@@ -63,7 +63,7 @@ kinit()
     start_mem = end_mem;
     end_mem += each_share_mem;
   }
-  printf("4");
+  // printf("4");
 }
 
 void
