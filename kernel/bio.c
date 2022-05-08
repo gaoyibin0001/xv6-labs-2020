@@ -47,9 +47,7 @@ uint64
 sys_uptime_bucket(void)
 {
   uint xticks;
-  //printf("hit uptime 1\n");
   acquire(&tickslock);
-  //printf("hit uptime 2\n");
   xticks = ticks;
   release(&tickslock);
   return xticks;
@@ -61,31 +59,17 @@ binit(void)
   struct buf *b;
 
   initlock(&bcache.lock, "bcache");
-
-  // Create linked list of buffers
-  // bcache.head.prev = &bcache.head;
-  // bcache.head.next = &bcache.head;
   for(b = bcache.buf; b < bcache.buf+NBUF; b++){
-    // b->next = bcache.head.next;
-    // b->prev = &bcache.head;
     initsleeplock(&b->lock, "buffer");
-    // bcache.head.next->prev = b;
-    // bcache.head.next = b;
   }
 
   struct bucket *bt;
   int bucket_id;
-  // ////printf("aa: %d\n",bcache.lock.locked);
   for(bucket_id = 0; bucket_id < NBUCKET; bucket_id++){
-    // b->next = bcache.head.next;
-    // b->prev = &bcache.head;
-    // bucket_id = bt - bcache.hash_buckets;
     bt = &bcache.hash_buckets[bucket_id];
     snprintf(names_bucket[bucket_id], 20, "bcache-%d", bucket_id);
     initlock(&bt->lock, names_bucket[bucket_id]);
-    // ////printf("aa: %d\n",bcache.lock.locked);
   }
-  // ////printf("545454");
 }
 
 int 
@@ -102,15 +86,10 @@ get_bucket_id(uint dev, uint blockno)
 static struct buf*
 bget(uint dev, uint blockno)
 { 
-  //printf("hit bget\n");
   struct buf *b;
   int bucket_id = get_bucket_id(dev, blockno);
-  // printf("dev: %d, blockno: %d\n", dev, blockno);
   struct bucket *bucket_hit = &bcache.hash_buckets[bucket_id];
-  //printf("hit bget 1\n");
-  // printf("acquire 0\n");
   acquire(&bucket_hit->lock);
-  //printf("hit bget 2\n");
 
   // Is the block already cached?
   for(b = bucket_hit->head; b; b = b->next){
@@ -119,27 +98,17 @@ bget(uint dev, uint blockno)
       b->ticks = sys_uptime_bucket();
       release(&bucket_hit->lock);
       acquiresleep(&b->lock);
-      // printf("h b id: %d\n", b-bcache.buf);
-      // printf("hit buf id: %d, buf address: %p\n", b-bcache.buf, b);
 
       return b;
     }
   }
-  // printf("release 43\n");
   release(&bucket_hit->lock);
 
   // Not cached.
   // Recycle the least recently used (LRU) unused buffer.
-  // printf("hit bget 3\n");
-  
-  // printf("hit bget 4\n");
-  // printf("bucket_id:%d\n", bucket_id);
-
   struct buf *lru_buf = (void*)0; 
   struct buf *c_buf;
-  // printf("acquire 4\n");
   acquire(&bcache.lock);
-  // printf("acquire bucket 55\n");
   acquire(&bucket_hit->lock);
   // checkout again !!!
   for(b = bucket_hit->head; b; b = b->next){
@@ -149,12 +118,10 @@ bget(uint dev, uint blockno)
       release(&bucket_hit->lock);
       release(&bcache.lock);
       acquiresleep(&b->lock);
-      // printf("h b id: %d\n", b-bcache.buf);
-      // printf("hit buf id: %d, buf address: %p\n", b-bcache.buf, b);
-
       return b;
     }
   }
+
   // allock new buf to bucket
   int current_buf_bucket_id = -2, previous_buf_bucket_id= -1;
   struct bucket *current_buf_bucket = (void*)0;
@@ -167,17 +134,12 @@ bget(uint dev, uint blockno)
         previous_buf_bucket = &bcache.hash_buckets[previous_buf_bucket_id];
     }
     if (c_buf->ticks != 0 && bucket_id != current_buf_bucket_id && current_buf_bucket_id != previous_buf_bucket_id) {
-      //  printf("acquire 1\n");
        acquire(&current_buf_bucket->lock);
     }
     if(c_buf->refcnt == 0) {
       if (c_buf->ticks == 0){
-        //  release(&previous_buf_bucket->lock);
         if (lru_buf !=0) {
-          // previous_buf_bucket_id = get_bucket_id(lru_buf->dev, lru_buf->blockno);
-          // previous_buf_bucket = &bcache.hash_buckets[previous_buf_bucket_id];
           if (lru_buf->ticks != 0 && bucket_id != previous_buf_bucket_id) {
-            // printf("release 0\n");
             release(&previous_buf_bucket->lock);
           }
         }
@@ -193,11 +155,7 @@ bget(uint dev, uint blockno)
         
         // hold current lock
         // release previous lock
-      //  previous_buf_bucket_id = get_bucket_id(lru_buf->dev, lru_buf->blockno);
-      //  previous_buf_bucket = &bcache.hash_buckets[previous_buf_bucket_id];
-      //  release(&previous_buf_bucket->lock);
        if (lru_buf->ticks != 0 && bucket_id != previous_buf_bucket_id && current_buf_bucket_id != previous_buf_bucket_id) {
-        //  printf("release 0\n");
           release(&previous_buf_bucket->lock);
         }
 
@@ -205,14 +163,12 @@ bget(uint dev, uint blockno)
       }
       else {
         if (c_buf->ticks != 0 && bucket_id != current_buf_bucket_id && current_buf_bucket_id != previous_buf_bucket_id) {
-          // printf("release 1\n");
           release(&current_buf_bucket->lock);
         }
       }
     }
     else {
       if (c_buf->ticks != 0 && bucket_id != current_buf_bucket_id && current_buf_bucket_id != previous_buf_bucket_id) {
-        // printf("release 2\n");
         release(&current_buf_bucket->lock);
          }
        
@@ -227,14 +183,6 @@ bget(uint dev, uint blockno)
     old_bucket = &bcache.hash_buckets[old_bucket_id];
     if (lru_buf->ticks != 0 && old_bucket_id != bucket_id) {  // so lru belong to bucket other than current bucket id
         struct buf * check_buf;
-        // if (old_bucket_id < bucket_id) {
-        //   acquire(&old_bucket->lock);
-        //   acquire(&bucket_hit->lock);
-        // }
-        // else {
-        //   acquire(&bucket_hit->lock);
-        //   acquire(&old_bucket->lock);
-        // }
         
         if (lru_buf == old_bucket->head) {
           old_bucket->head = lru_buf->next;
@@ -248,21 +196,14 @@ bget(uint dev, uint blockno)
           }
         }
       }
-      // else {
-      //   acquire(&bucket_hit->lock);
-      // }
 
      lru_buf->refcnt = 1;
-    // printf("bucket head: %p\n", bucket_hit->head);
-    // printf("old bucket id %d, new bucket_id %d\n", old_bucket_id, bucket_id);
      if (lru_buf->ticks == 0 || (lru_buf->ticks != 0 && old_bucket_id != bucket_id)) { // if new buf not belong to any bucket or not same bucket
         lru_buf->next = bucket_hit->head;
         bucket_hit->head = lru_buf;
      }
-    //  printf("release 4\n");
      release(&bcache.lock);
      if (lru_buf->ticks != 0 && old_bucket_id != bucket_id) {
-        // printf("release 6\n");
         release(&old_bucket->lock);
       }
      
@@ -271,40 +212,11 @@ bget(uint dev, uint blockno)
       lru_buf->valid = 0;
       
       lru_buf->ticks = sys_uptime_bucket();
-      //printf("hit bget 5\n");
       
-      //printf("hit bget 6\n");
-     
-      // printf("get in bucket id:%d\n", bucket_id);
-      // printf("after bucket head: %p\n", bucket_hit->head);
-      // if (old_bucket) {
-      //     if (old_bucket_id < bucket_id) {
-      //       release(&bucket_hit->lock);
-      //       release(&old_bucket->lock);
-      //     }
-      //     else {
-      //       release(&old_bucket->lock);
-      //       release(&bucket_hit->lock);
-      //     }
-      // }
-      // else {
-      //   release(&bucket_hit->lock);
-      // }
-
-      
-      // release(&bucket_hit.lock);
-      //printf("aha!!!\n");
-      
-      // printf("release 7\n");
       release(&bucket_hit->lock);
-      // printf("r b i: %d\n", lru_buf-bcache.buf);
-      // printf("reuse buf id: %d, buf address: %p\n", lru_buf-bcache.buf, lru_buf);
-
       acquiresleep(&lru_buf->lock);
-      // printf("got yoaa!!\n");
       return lru_buf;
     }
-  // release(&bcache.lock);
   panic("bget: no buffers");
 }
 
@@ -336,7 +248,6 @@ bwrite(struct buf *b)
 void
 brelse(struct buf *b)
 { 
-  // printf("hit brelse\n");
   if(!holdingsleep(&b->lock))
     panic("brelse");
   releasesleep(&b->lock);
@@ -345,13 +256,8 @@ brelse(struct buf *b)
   struct bucket *bucket_hit = &bcache.hash_buckets[bucket_id];
   acquire(&bucket_hit->lock);
   b->refcnt--;
-  // struct buf * check_buf;
   if (b->refcnt == 0) {
     b->ticks = sys_uptime_bucket();
-
-    // printf("release in bucket id:%d\n", bucket_id);
-    // printf("brelse bucket head: %p\n", bucket_hit->head);
-    // printf("after brelse buf id: %d\n", b-bcache.buf);
   }
   release(&bucket_hit->lock);
 }
