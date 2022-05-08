@@ -101,11 +101,11 @@ get_bucket_id(uint dev, uint blockno)
 // In either case, return locked buffer.
 static struct buf*
 bget(uint dev, uint blockno)
-{
+{ 
   //printf("hit bget\n");
   struct buf *b;
   int bucket_id = get_bucket_id(dev, blockno);
-
+  printf("dev: %d, blockno: %d\n", dev, blockno);
   struct bucket *bucket_hit = &bcache.hash_buckets[bucket_id];
   //printf("hit bget 1\n");
   acquire(&bucket_hit->lock);
@@ -128,8 +128,8 @@ bget(uint dev, uint blockno)
   // Recycle the least recently used (LRU) unused buffer.
   // printf("hit bget 3\n");
   
-  //printf("hit bget 4\n");
-  // printf("bucket_id:%d\n", bucket_id);
+  // printf("hit bget 4\n");
+  printf("bucket_id:%d\n", bucket_id);
 
   struct buf *lru_buf = (void*)0; 
   acquire(&bcache.lock);
@@ -167,12 +167,12 @@ bget(uint dev, uint blockno)
         }
         
         if (lru_buf == old_bucket->head) {
-          old_bucket->head = old_bucket->head->next;
+          old_bucket->head = lru_buf->next;
         }
         else {
           for (check_buf=old_bucket->head; check_buf->next; check_buf=check_buf->next){
             if (check_buf->next == lru_buf) {
-                check_buf->next = check_buf->next->next;
+                check_buf->next = lru_buf->next;
                 break;
             }
           }
@@ -183,8 +183,8 @@ bget(uint dev, uint blockno)
       }
 
      lru_buf->refcnt = 1;
-    printf("bucket head: %p\n", bucket_hit->head);
-    printf("old bucket id %d, new bucket_id %d\n", old_bucket_id, bucket_id);
+    // printf("bucket head: %p\n", bucket_hit->head);
+    // printf("old bucket id %d, new bucket_id %d\n", old_bucket_id, bucket_id);
      if (lru_buf->ticks == 0 || (lru_buf->ticks != 0 && old_bucket_id != bucket_id)) { // if new buf not belong to any bucket or not same bucket
         lru_buf->next = bucket_hit->head;
         bucket_hit->head = lru_buf;
@@ -201,8 +201,8 @@ bget(uint dev, uint blockno)
       
       //printf("hit bget 6\n");
      
-      printf("get in bucket id:%d\n", bucket_id);
-      printf("after bucket head: %p\n", bucket_hit->head);
+      // printf("get in bucket id:%d\n", bucket_id);
+      // printf("after bucket head: %p\n", bucket_hit->head);
       if (old_bucket) {
           if (old_bucket_id < bucket_id) {
             release(&bucket_hit->lock);
@@ -222,7 +222,7 @@ bget(uint dev, uint blockno)
       //printf("aha!!!\n");
       // printf("lru_buf: %d\n", lru_buf-bcache.buf);
       acquiresleep(&lru_buf->lock);
-      //printf("got yoaa!!\n");
+      printf("got yoaa!!\n");
       return lru_buf;
     }
   // release(&bcache.lock);
@@ -257,7 +257,7 @@ bwrite(struct buf *b)
 void
 brelse(struct buf *b)
 { 
-  //printf("hit brelse\n");
+  printf("hit brelse\n");
   if(!holdingsleep(&b->lock))
     panic("brelse");
   releasesleep(&b->lock);
@@ -268,29 +268,11 @@ brelse(struct buf *b)
   b->refcnt--;
   // struct buf * check_buf;
   if (b->refcnt == 0) {
-    // no one is waiting for it.
-    // b->next->prev = b->prev;
-    // b->prev->next = b->next;
-    // b->next = bcache.head.next;
-    // b->prev = &bcache.head;
-    // bcache.head.next->prev = b;
-    // bcache.head.next = b;
     b->ticks = sys_uptime_bucket();
 
-  //   printf("release in bucket id:%d\n", bucket_id);
-  //   printf("brelse bucket head: %p\n", bucket_hit->head);
-  //   if (b == bucket_hit->head) {
-  //     bucket_hit->head = bucket_hit->head->next;
-  //   }
-  //   else {
-  //     for (check_buf=bucket_hit->head; check_buf->next; check_buf=check_buf->next){
-  //      if (check_buf->next == b) {
-  //         check_buf->next = check_buf->next->next;
-  //         break;
-  //       }
-  //     }
-  //   }
-  //   printf("after brelse bucket head: %p\n", bucket_hit->head);
+    // printf("release in bucket id:%d\n", bucket_id);
+    // printf("brelse bucket head: %p\n", bucket_hit->head);
+    printf("after brelse bucket head: %p\n", bucket_hit->head);
   }
   
   release(&bucket_hit->lock);
