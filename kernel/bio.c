@@ -105,7 +105,7 @@ bget(uint dev, uint blockno)
   //printf("hit bget\n");
   struct buf *b;
   int bucket_id = get_bucket_id(dev, blockno);
-  printf("dev: %d, blockno: %d\n", dev, blockno);
+  // printf("dev: %d, blockno: %d\n", dev, blockno);
   struct bucket *bucket_hit = &bcache.hash_buckets[bucket_id];
   //printf("hit bget 1\n");
   acquire(&bucket_hit->lock);
@@ -118,7 +118,7 @@ bget(uint dev, uint blockno)
       b->ticks = sys_uptime_bucket();
       release(&bucket_hit->lock);
       acquiresleep(&b->lock);
-      printf("hit bucket id: %d\n", bucket_id);
+      printf("hit buf id: %d\n", b-bcache.buf);
       return b;
     }
   }
@@ -129,7 +129,7 @@ bget(uint dev, uint blockno)
   // printf("hit bget 3\n");
   
   // printf("hit bget 4\n");
-  printf("bucket_id:%d\n", bucket_id);
+  // printf("bucket_id:%d\n", bucket_id);
 
   struct buf *lru_buf = (void*)0; 
   acquire(&bcache.lock);
@@ -221,8 +221,10 @@ bget(uint dev, uint blockno)
       // release(&bucket_hit.lock);
       //printf("aha!!!\n");
       // printf("lru_buf: %d\n", lru_buf-bcache.buf);
+      printf("reuse buf id: %d\n", lru_buf-bcache.buf);
+
       acquiresleep(&lru_buf->lock);
-      printf("got yoaa!!\n");
+      // printf("got yoaa!!\n");
       return lru_buf;
     }
   // release(&bcache.lock);
@@ -257,7 +259,7 @@ bwrite(struct buf *b)
 void
 brelse(struct buf *b)
 { 
-  printf("hit brelse\n");
+  // printf("hit brelse\n");
   if(!holdingsleep(&b->lock))
     panic("brelse");
   releasesleep(&b->lock);
@@ -272,7 +274,7 @@ brelse(struct buf *b)
 
     // printf("release in bucket id:%d\n", bucket_id);
     // printf("brelse bucket head: %p\n", bucket_hit->head);
-    printf("after brelse bucket head: %p\n", bucket_hit->head);
+    printf("after brelse buf id: %d\n", b-bcache.buf);
   }
   
   release(&bucket_hit->lock);
