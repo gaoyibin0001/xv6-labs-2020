@@ -286,12 +286,13 @@ create(char *path, short type, short major, short minor)
 uint64
 sys_open(void)
 {
-  char path[MAXPATH];
+  char path[MAXPATH], target[MAXPATH];
+  
   int fd, omode;
   struct file *f;
-  struct inode *ip;
-  int n;
-
+  struct inode *ip, *target_ip;
+  int n, symlink_redirect_max_number = 10;
+  
   if((n = argstr(0, path, MAXPATH)) < 0 || argint(1, &omode) < 0)
     return -1;
 
@@ -313,6 +314,41 @@ sys_open(void)
       iunlockput(ip);
       end_op();
       return -1;
+    }
+
+    if(ip->type == T_SYMLINK && !(omode & O_NOFOLLOW)){
+      
+
+      while (symlink_redirect_max_number > 0)
+      {
+        if (readi(ip, 0, (uint64)target, 0, MAXPATH) <= 0) {
+          iunlockput(ip);
+          end_op();
+          return -1;
+        }
+        iunlockput(ip);
+        if((target_ip = namei(target)) == 0){
+          // iunlockput(ip);
+          end_op();
+          return -1;
+        }
+        ilock(target_ip);
+        // You do not have to handle symbolic links to directories for this lab.
+        if (target_ip->type == T_SYMLINK) {
+          ip = target_ip;
+          symlink_redirect_max_number--;
+        }
+        else{
+          ip = target_ip;
+          break;
+        }
+      }
+
+      if (symlink_redirect_max_number==0){  // reach the max recursion
+        iunlockput(ip);
+        end_op();
+        return -1;
+      }
     }
   }
 
@@ -483,4 +519,51 @@ sys_pipe(void)
     return -1;
   }
   return 0;
+}
+
+uint64
+sys_symlink(void)
+{
+  char name[DIRSIZ], target[MAXPATH], path[MAXPATH];
+  struct inode *dp, *ip;
+
+  if(argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0)
+    return -1;
+
+  begin_op();
+  if((dp = nameiparent(path, name)) == 0)
+    goto bad;
+
+  // make a new inode
+  // write the target name to it
+  // dirlink the dp , name , ip->inum
+  if((ip = ialloc(dp->dev, T_SYMLINK)) == 0)
+    panic("create: ialloc");
+  
+  ilock(ip);
+  ip->nlink = 1;
+  iupdate(ip);
+
+  if (writei(ip, 0, (uint64)target, 0, MAXPATH) <= 0) {
+    iunlockput(ip);
+    goto bad;
+  }
+  iunlock(ip);  
+
+  ilock(dp);
+  if(dirlink(dp, name, ip->inum) < 0){
+    iput(ip);
+    iunlockput(dp);
+    goto bad;
+  }
+  iunlockput(dp);
+  iput(ip);
+
+  end_op();
+
+  return 0;
+
+bad:
+  end_op();
+  return -1;
 }
