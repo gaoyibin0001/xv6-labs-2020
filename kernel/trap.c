@@ -5,6 +5,11 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fs.h"
+#include "sleeplock.h"
+#include "file.h"
+#include "fcntl.h"
+// #include "memlayout.h"
 
 struct spinlock tickslock;
 uint ticks;
@@ -37,6 +42,12 @@ void
 usertrap(void)
 {
   int which_dev = 0;
+  int scause = r_scause();
+  uint64 stval = r_stval();
+  uint64 va;
+  void *mem;
+  struct file *f;
+  
 
   if((r_sstatus() & SSTATUS_SPP) != 0)
     panic("usertrap: not from user mode");
@@ -67,11 +78,56 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  } else {
-    printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
-    printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
-    p->killed = 1;
+  } 
+  // else {
+  //   printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+  //   printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+  //   p->killed = 1;
+  // }
+  else {
+    struct vma *find_vma;
+    uint64 va_start_addr;
+    int find = 0, permissions, map_permission;
+    for (int i=0; i<p->vma_sz; i++){
+      find_vma = &p->vma_list[i];
+      va_start_addr = (uint64)find_vma->addr;
+      if (stval >= va_start_addr && stval < (va_start_addr+find_vma->length)) {
+        find = 1;
+        break;
+      }
+    }
+    va = PGROUNDDOWN(stval);
+    int file_offset = va - (uint64)find_vma->addr;
+   
+    if ((scause == 13 || scause == 15) && find==1) {
+      mem = kalloc();
+      if(mem == 0){
+        p->killed = 1;
+      } else {
+        f = find_vma->file;
+        memset(mem, 0, PGSIZE);
+        // printf("va: %d, file offset:%d\n", va, file_offset);
+        ilock(f->ip);
+        if(readi(f->ip, 0, (uint64)mem, file_offset, PGSIZE) < 0)
+          exit(-1);
+        iunlock(f->ip);
+        permissions = find_vma->permissions;
+        map_permission = PTE_U;
+        if (permissions & PROT_READ) map_permission |= PTE_R;
+        if (permissions & PROT_WRITE) map_permission |= PTE_W;
+        if (permissions & PROT_EXEC) map_permission |= PTE_X;
+
+        if(mappages(p->pagetable, va, PGSIZE, (uint64)mem, map_permission) != 0){
+          kfree(mem);
+          p->killed = 1;
+    }
+    }
+    }
+    else {
+      p->killed=1;
+    }
   }
+    
 
   if(p->killed)
     exit(-1);

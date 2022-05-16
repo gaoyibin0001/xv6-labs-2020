@@ -5,6 +5,10 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fs.h"
+#include "sleeplock.h"
+#include "file.h"
+#include "fcntl.h"
 
 struct cpu cpus[NCPU];
 
@@ -273,13 +277,14 @@ fork(void)
   if((np = allocproc()) == 0){
     return -1;
   }
-
+  // printf("fdfdfd\n");
   // Copy user memory from parent to child.
   if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
     freeproc(np);
     release(&np->lock);
     return -1;
   }
+  // printf("fjifjidjfi\n");
   np->sz = p->sz;
 
   np->parent = p;
@@ -295,6 +300,13 @@ fork(void)
     if(p->ofile[i])
       np->ofile[i] = filedup(p->ofile[i]);
   np->cwd = idup(p->cwd);
+
+  for (int i=0; i<p->vma_sz; i++){
+    np->vma_list[i] = p->vma_list[i];
+    if (np->vma_list[i].file)
+      filedup(np->vma_list[i].file);
+  }
+  np->vma_sz = p->vma_sz;
 
   safestrcpy(np->name, p->name, sizeof(p->name));
 
@@ -340,9 +352,23 @@ void
 exit(int status)
 {
   struct proc *p = myproc();
+  struct vma *find_vma;
+  uint64 va_start_addr, va, length;
 
   if(p == initproc)
     panic("init exiting");
+
+  for (int i=0; i<p->vma_sz; i++){
+    find_vma = &p->vma_list[i];
+    va_start_addr = (uint64)find_vma->addr;
+    if (find_vma->flags & MAP_SHARED) {
+      filewrite(find_vma->file, va_start_addr,find_vma->length);
+    }
+    va = PGROUNDDOWN(va_start_addr);
+    length = PGROUNDUP(va_start_addr+find_vma->length-va);
+    uvmunmap_no_error(p->pagetable, va, length/PGSIZE, 1);
+    fileclose(find_vma->file);
+  }
 
   // Close all open files.
   for(int fd = 0; fd < NOFILE; fd++){

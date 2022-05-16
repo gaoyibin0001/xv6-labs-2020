@@ -499,6 +499,8 @@ sys_mmap(void) {
     return -1;
   if ((p->vma_sz+1) >= NOVMA)
     return -1;
+  if (!f->writable && (PROT_WRITE & prot) && (flags & MAP_SHARED))
+    return -1;
 
   filedup(f);
   struct vma new_vam;
@@ -517,5 +519,45 @@ sys_mmap(void) {
 
 uint64
 sys_munmap(void) {
+  int length, addr;
+  // struct file *f;
+  struct proc *p = myproc();
+  uint64 va;
+
+  if(argint(1, &length) < 0 || argint(0, &addr) < 0)
+    return -1;
+  
+  struct vma *find_vma;
+  uint64 va_start_addr;
+  int find = 0,find_vma_index;
+  for (int i=0; i<p->vma_sz; i++){
+    find_vma = &p->vma_list[i];
+    va_start_addr = (uint64)find_vma->addr;
+    if (addr >= va_start_addr && addr < (va_start_addr+find_vma->length)) {
+      find = 1;
+      if (length>find_vma->length) length=find_vma->length;
+      break;
+    }
+  }
+  if (find==1) {
+    // todo  checkout page dirty
+    if (find_vma->flags & MAP_SHARED) {
+      filewrite(find_vma->file, addr, length);
+    }
+    va = PGROUNDUP(addr);
+    length = PGROUNDDOWN(addr+length-va);
+    
+    uvmunmap_no_error(p->pagetable, va, length/PGSIZE, 1);
+    if (length == find_vma->length){
+      fileclose(find_vma->file);
+      find_vma_index = find_vma - p->vma_list;
+      if (find_vma_index != (p->vma_sz-1))
+        p->vma_list[find_vma_index] = p->vma_list[p->vma_sz-1];
+      p->vma_sz--;
+    }
+  }
+  else {
+    return -1;
+  }
   return 0;
 }

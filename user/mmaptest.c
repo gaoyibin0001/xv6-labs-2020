@@ -271,15 +271,20 @@ fork_test(void)
   // read just 2nd page.
   if(*(p1+PGSIZE) != 'A')
     err("fork mismatch (1)");
-
+  // printf("test 33434\n");
   if((pid = fork()) < 0)
     err("fork");
+  // printf("test gth546565\n");
   if (pid == 0) {
+    // printf("test bhytjyjtyj 333\n");
     _v1(p1);
+    printf("4\n");
     munmap(p1, PGSIZE); // just the first page
+    printf("7\n");
     exit(0); // tell the parent that the mapping looks OK.
+    printf("8\n");
   }
-
+  // printf("test bhytjyjtyj 4444\n");
   int status = -1;
   wait(&status);
 
