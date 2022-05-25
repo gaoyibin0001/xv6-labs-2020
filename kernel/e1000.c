@@ -20,6 +20,8 @@ static struct mbuf *rx_mbufs[RX_RING_SIZE];
 static volatile uint32 *regs;
 
 struct spinlock e1000_lock;
+struct spinlock e1000_lock_transmit;
+struct spinlock e1000_lock_recv;
 
 // called by pci_init().
 // xregs is the memory address at which the
@@ -30,6 +32,8 @@ e1000_init(uint32 *xregs)
   int i;
 
   initlock(&e1000_lock, "e1000");
+  initlock(&e1000_lock_transmit, "e1000_lock_transmit");
+  initlock(&e1000_lock_recv, "e1000_lock_recv");
 
   regs = xregs;
 
@@ -95,26 +99,66 @@ e1000_init(uint32 *xregs)
 int
 e1000_transmit(struct mbuf *m)
 {
-  //
-  // Your code here.
-  //
-  // the mbuf contains an ethernet frame; program it into
-  // the TX descriptor ring so that the e1000 sends it. Stash
-  // a pointer so that it can be freed after sending.
-  //
-  
+  printf("fdfdfdfd\n");
+  acquire(&e1000_lock_transmit);
+  int next_index = regs[E1000_TDT];
+  struct tx_desc *found_desc = &tx_ring[next_index];
+  if (!(found_desc->status & E1000_TXD_STAT_DD)) {  // not transmit complete..
+    printf("tttttt\n");
+    release(&e1000_lock_transmit);
+    return -1;
+  } else {
+    if (tx_mbufs[next_index])
+      mbuffree(tx_mbufs[next_index]);
+  }
+
+  tx_mbufs[next_index] = m;
+  found_desc->addr = (uint64)m->head;
+  found_desc->cmd = E1000_TXD_CMD_EOP | E1000_TXD_CMD_RS;
+  found_desc->status = 0;
+  found_desc->length = m->len;
+
+  regs[E1000_TDT] = (next_index+1) % TX_RING_SIZE;
+  release(&e1000_lock_transmit);
+  printf("got transmit\n");
   return 0;
 }
 
 static void
 e1000_recv(void)
 {
-  //
-  // Your code here.
-  //
-  // Check for packets that have arrived from the e1000
-  // Create and deliver an mbuf for each packet (using net_rx()).
-  //
+  printf("11111\n");
+  acquire(&e1000_lock_recv);
+  printf("22222\n");
+  int next_index = (regs[E1000_RDT]+1) % RX_RING_SIZE;
+  printf("33333\n");
+  struct rx_desc *found_desc = &rx_ring[next_index];
+  if (!(found_desc->status & E1000_RXD_STAT_DD)) {  // receiver not handle complete..
+    printf("fsdffsdf : %d: %d\n", next_index, found_desc->status);
+    release(&e1000_lock_recv);
+    return;
+  } 
+  printf("44444\n");
+  struct mbuf *found_mbuf = rx_mbufs[next_index];  
+  found_mbuf->len = found_desc->length;
+  net_rx(found_mbuf);
+
+  struct mbuf *new_mbuf = mbufalloc(MBUF_DEFAULT_HEADROOM);
+  if (!new_mbuf) {
+    printf("777777\n");
+    release(&e1000_lock_recv);
+    return;
+  }
+    
+  rx_mbufs[next_index] = new_mbuf;
+  found_desc->addr = (uint64)new_mbuf->head;
+  found_desc->status = 0;
+
+  regs[E1000_RDT] = next_index;
+  printf("55555\n");
+  release(&e1000_lock_recv);
+
+  printf("got recv\n");
 }
 
 void
