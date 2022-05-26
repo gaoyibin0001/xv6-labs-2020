@@ -99,12 +99,11 @@ e1000_init(uint32 *xregs)
 int
 e1000_transmit(struct mbuf *m)
 {
-  printf("fdfdfdfd\n");
   acquire(&e1000_lock_transmit);
   int next_index = regs[E1000_TDT];
   struct tx_desc *found_desc = &tx_ring[next_index];
   if (!(found_desc->status & E1000_TXD_STAT_DD)) {  // not transmit complete..
-    printf("tttttt\n");
+    // printf("tttttt\n");
     release(&e1000_lock_transmit);
     return -1;
   } else {
@@ -117,36 +116,35 @@ e1000_transmit(struct mbuf *m)
   found_desc->cmd = E1000_TXD_CMD_EOP | E1000_TXD_CMD_RS;
   found_desc->status = 0;
   found_desc->length = m->len;
+  
+  // barrier, instruction not prefetch after instruction
+  __sync_synchronize();
 
   regs[E1000_TDT] = (next_index+1) % TX_RING_SIZE;
   release(&e1000_lock_transmit);
-  printf("got transmit\n");
+  // printf("got transmit\n");
   return 0;
 }
 
 static void
 e1000_recv(void)
 {
-  printf("11111\n");
-  acquire(&e1000_lock_recv);
-  printf("22222\n");
+  // why while true. during handing interrupt, the incoming interrupt is disabled.
+  while(1){
+  // acquire(&e1000_lock_recv);
   int next_index = (regs[E1000_RDT]+1) % RX_RING_SIZE;
-  printf("33333\n");
   struct rx_desc *found_desc = &rx_ring[next_index];
   if (!(found_desc->status & E1000_RXD_STAT_DD)) {  // receiver not handle complete..
-    printf("fsdffsdf : %d: %d\n", next_index, found_desc->status);
-    release(&e1000_lock_recv);
+    // release(&e1000_lock_recv);
     return;
   } 
-  printf("44444\n");
   struct mbuf *found_mbuf = rx_mbufs[next_index];  
   found_mbuf->len = found_desc->length;
   net_rx(found_mbuf);
 
   struct mbuf *new_mbuf = mbufalloc(MBUF_DEFAULT_HEADROOM);
   if (!new_mbuf) {
-    printf("777777\n");
-    release(&e1000_lock_recv);
+    // release(&e1000_lock_recv);
     return;
   }
     
@@ -155,10 +153,10 @@ e1000_recv(void)
   found_desc->status = 0;
 
   regs[E1000_RDT] = next_index;
-  printf("55555\n");
-  release(&e1000_lock_recv);
+  // release(&e1000_lock_recv);
 
-  printf("got recv\n");
+  // printf("got recv\n");
+  }
 }
 
 void
